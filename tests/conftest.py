@@ -44,5 +44,9 @@ def category(db):
 @pytest.fixture
 def product(seller, category):
     return Product.objects.create(
-        seller=seller, category=category, name="Blue Pottery Vase", price="499.80", stock=5
+        seller=seller, category=category, name="Blue Pottery Vase", price="499.00", stock=5
     )
+    
+@pytest.fixture
+def staff(db):
+    return User.objects.create_superuser(email="staff@example.com", password=PASSWORD)
