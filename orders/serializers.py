@@ -11,6 +11,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = ("id", "product", "product_name", "unit_price", "quantity", "line_total")
 
+
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
 
@@ -26,12 +27,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
+
 class CheckoutSerializer(serializers.Serializer):
     shipping_address = serializers.CharField(min_length=10, max_length=500)
 
     def create(self, validated_data):
         user = self.context["request"].user
         return checkout(user, validated_data["shipping_address"])
+
 
 class OrderStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Order.Status.choices)

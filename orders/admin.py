@@ -9,6 +9,7 @@ class OrderItemInline(admin.TabularInline):
     readonly_fields = ("product", "seller", "product_name", "unit_price", "quantity")
     can_delete = False
 
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "status", "total_amount", "created_at")

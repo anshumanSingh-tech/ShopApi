@@ -2,6 +2,7 @@ from django.http import JsonResponse
 
 HEALTH_PATH = "/api/health/"
 
+
 class HealthCheckMiddleware:
     """
     Answers the platform's health probe before anything else runs.

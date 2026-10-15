@@ -82,8 +82,9 @@ def test_editing_a_product_invalidates(client, product, locmem_cache, django_cap
     assert res.json()["name"] == "Renamed Vase"  # fresh data, not the cached old name
 
 
-def test_new_product_appears_in_cached_list(client, product, seller, category, locmem_cache,
-                                            django_capture_on_commit_callbacks):
+def test_new_product_appears_in_cached_list(
+    client, product, seller, category, locmem_cache, django_capture_on_commit_callbacks
+):
     assert client.get(PRODUCTS).json()["count"] == 1
     assert x_cache(client.get(PRODUCTS)) == "HIT"
 
@@ -103,8 +104,9 @@ def test_deleting_a_product_invalidates(client, product, locmem_cache, django_ca
     assert client.get(url).status_code == 404
 
 
-def test_renaming_a_category_refreshes_product_lists(client, product, category, locmem_cache,
-                                                     django_capture_on_commit_callbacks):
+def test_renaming_a_category_refreshes_product_lists(
+    client, product, category, locmem_cache, django_capture_on_commit_callbacks
+):
     client.get(PRODUCTS)
     with django_capture_on_commit_callbacks(execute=True):
         category.name = "Fine Art"
@@ -112,8 +114,9 @@ def test_renaming_a_category_refreshes_product_lists(client, product, category, 
     assert client.get(PRODUCTS).json()["results"][0]["category_name"] == "Fine Art"
 
 
-def test_checkout_stock_change_invalidates(auth, client, customer, product, locmem_cache,
-                                           django_capture_on_commit_callbacks):
+def test_checkout_stock_change_invalidates(
+    auth, client, customer, product, locmem_cache, django_capture_on_commit_callbacks
+):
     """Checkout changes stock with .update() (no signals) - it must bump the cache itself."""
     url = f"{PRODUCTS}{product.id}/"
     assert client.get(url).json()["stock"] == 5
@@ -129,8 +132,9 @@ def test_checkout_stock_change_invalidates(auth, client, customer, product, locm
     assert x_cache(fresh) == "MISS" and fresh.json()["stock"] == 3
 
 
-def test_cancelling_an_order_invalidates(auth, client, customer, product, locmem_cache,
-                                         django_capture_on_commit_callbacks):
+def test_cancelling_an_order_invalidates(
+    auth, client, customer, product, locmem_cache, django_capture_on_commit_callbacks
+):
     c = auth(customer)
     c.post("/api/cart/items/", {"product": product.id, "quantity": 2})
     with django_capture_on_commit_callbacks(execute=True):
@@ -165,9 +169,7 @@ def test_sellers_hidden_products_never_leak_into_public_cache(auth, client, sell
 
 
 def test_writes_are_not_affected_by_caching(auth, seller, category, locmem_cache):
-    res = auth(seller).post(
-        PRODUCTS, {"name": "Lamp", "price": "50.00", "stock": 2, "category": category.id}
-    )
+    res = auth(seller).post(PRODUCTS, {"name": "Lamp", "price": "50.00", "stock": 2, "category": category.id})
     assert res.status_code == 201
 
 

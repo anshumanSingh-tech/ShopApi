@@ -11,12 +11,14 @@ logger = logging.getLogger(__name__)
 
 VERSION_KEY = "catalog:version"
 
+
 def get_version():
     try:
         return cache.get(VERSION_KEY, "0")
     except Exception as exc:
         logger.warning("Cache unavailable, serving from database: %s", exc)
         return None
+
 
 def build_key(request):
     version = get_version()
@@ -25,6 +27,7 @@ def build_key(request):
     params = sorted((k, sorted(v)) for k, v in request.query_params.lists())
     digest = hashlib.sha256(f"{request.path}|{params}".encode()).hexdigest()[:32]
     return f"catalog:{version}:{digest}"
+
 
 def cache_get(key):
     try:
@@ -40,14 +43,17 @@ def cache_set(key, value, ttl):
     except Exception as exc:
         logger.warning("Cache write failed: %s", exc)
 
+
 def bump_version():
     try:
         cache.set(VERSION_KEY, str(time.time_ns()), timeout=None)
     except Exception as exc:
         logger.warning("Cache invalidation failed (enteries expire by TTL): %s", exc)
 
+
 def invalidate_on_commit():
     transaction.on_commit(bump_version)
+
 
 class CachedReadMixin:
     cache_ttl = None

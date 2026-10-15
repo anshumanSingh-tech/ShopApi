@@ -60,8 +60,10 @@ class AddToCartSerializer(serializers.Serializer):
         wanted = attrs["quantity"] + (existing.quantity if existing else 0)
         if wanted > product.stock:
             raise serializers.ValidationError(
-                {"quantity": f"Only {product.stock} in stock (you already have "
-                             f"{existing.quantity if existing else 0} in your cart)."}
+                {
+                    "quantity": f"Only {product.stock} in stock (you already have "
+                    f"{existing.quantity if existing else 0} in your cart)."
+                }
             )
         if wanted > MAX_QTY_PER_ITEM:
             raise serializers.ValidationError(

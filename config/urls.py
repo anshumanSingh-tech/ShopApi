@@ -7,6 +7,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 def health(request):
     return JsonResponse({"status": "ok"})
 
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("/api/health/", health, name="health"),

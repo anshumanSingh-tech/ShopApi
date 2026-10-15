@@ -53,9 +53,7 @@ def test_register_cannot_self_assign_staff(client):
 
 
 def test_login_returns_tokens(client, customer):
-    res = client.post(
-        LOGIN_URL, {"email": customer.email, "password": "StrongPass123!"}
-    )
+    res = client.post(LOGIN_URL, {"email": customer.email, "password": "StrongPass123!"})
     assert res.status_code == 200
     assert {"access", "refresh"} <= set(res.data)
 
@@ -70,9 +68,7 @@ def test_me_requires_authentication(client):
 
 
 def test_me_with_jwt_and_cannot_change_role(client, customer):
-    token = client.post(
-        LOGIN_URL, {"email": customer.email, "password": "StrongPass123!"}
-    ).data["access"]
+    token = client.post(LOGIN_URL, {"email": customer.email, "password": "StrongPass123!"}).data["access"]
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     assert client.get(ME_URL).data["email"] == customer.email

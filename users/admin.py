@@ -7,6 +7,7 @@ from .models import User
 
 class UserCreationForm(forms.ModelForm):
     """Custom form for creating new users in the Django admin."""
+
     password = forms.CharField(label="Password", widget=forms.PasswordInput)
     password_confirm = forms.CharField(label="Password confirmation", widget=forms.PasswordInput)
 

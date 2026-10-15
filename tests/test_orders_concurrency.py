@@ -20,9 +20,7 @@ def test_concurrent_checkouts_never_oversell():
     if connection.vendor != "postgresql":
         pytest.skip("needs PostgreSQL (SQLite ignores row locks)")
 
-    seller = User.objects.create_user(
-        email="seller@example.com", password="x", role=User.Role.SELLER
-    )
+    seller = User.objects.create_user(email="seller@example.com", password="x", role=User.Role.SELLER)
     product = Product.objects.create(
         seller=seller,
         category=Category.objects.create(name="Race"),
@@ -33,12 +31,8 @@ def test_concurrent_checkouts_never_oversell():
 
     buyers = []
     for i in range(BUYERS):
-        user = User.objects.create_user(
-            email=f"buyer{i}@example.com", password="StrongPass123!"
-        )
-        CartItem.objects.create(
-            cart=Cart.objects.create(user=user), product=product, quantity=1
-        )
+        user = User.objects.create_user(email=f"buyer{i}@example.com", password="StrongPass123!")
+        CartItem.objects.create(cart=Cart.objects.create(user=user), product=product, quantity=1)
         buyers.append(user)
 
     barrier = threading.Barrier(BUYERS)

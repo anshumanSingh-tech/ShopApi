@@ -20,6 +20,7 @@ ALLOWED_TRANSACTIONS = {
     S.CANCELLED: set(),
 }
 
+
 @transaction.atomic
 def checkout(user, shipping_address):
     cart = Cart.objects.select_for_update().filter(user=user).first()
@@ -29,7 +30,7 @@ def checkout(user, shipping_address):
     if not cart_items:
         raise EmptyCartError()
 
-    products  = {
+    products = {
         p.id: p
         for p in Product.objects.select_for_update()
         .filter(id__in=[i.product_id for i in cart_items])
@@ -53,7 +54,7 @@ def checkout(user, shipping_address):
                 "name": p.name,
                 "requested": item.quantity,
                 "available": p.stock if p.is_active else 0,
-                "reason": reason
+                "reason": reason,
             }
         )
     if problems:
@@ -84,31 +85,25 @@ def checkout(user, shipping_address):
     cart.items.all().delete()
     return order
 
+
 def _restock(order):
     items = list(order.items.filter(product_id__isnull=False).order_by("product_id"))
     if not items:
         return
-    list(
-        Product.objects.select_for_update()
-        .filter(id__in=[i.product_id for i in items])
-        .order_by("id")
-    )
+    list(Product.objects.select_for_update().filter(id__in=[i.product_id for i in items]).order_by("id"))
     for item in items:
         Product.objects.filter(pk=item.product_id).update(stock=F("stock") + item.quantity)
         invalidate_on_commit()
+
 
 @transaction.atomic
 def change_status(order_id, new_status, *, allowed_from=None):
     order = Order.objects.select_for_update().get(pk=order_id)
 
     if allowed_from is not None and order.status not in allowed_from:
-        raise InvalidTransactionError(
-            f"An order that is '{order.status}' can't be changed this way."
-        )
+        raise InvalidTransactionError(f"An order that is '{order.status}' can't be changed this way.")
     if new_status not in ALLOWED_TRANSACTIONS[order.status]:
-        raise InvalidTransactionError(
-            f"Can't move an order from '{order.status}' to '{new_status}'."
-        )
+        raise InvalidTransactionError(f"Can't move an order from '{order.status}' to '{new_status}'.")
 
     if new_status == S.CANCELLED:
         _restock(order)

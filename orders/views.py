@@ -43,7 +43,6 @@ class OrderViewSet(
             return OrderStatusSerializer
         return OrderSerializer
 
-
     def _respond(self, order_id, http_status=status.HTTP_200_OK):
         order = Order.objects.prefetch_related("items").get(pk=order_id)
         return Response(OrderSerializer(order).data, status=http_status)

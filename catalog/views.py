@@ -16,16 +16,15 @@ from .permissions import (
 from .serializers import CategorySerializer, ProductSerializer
 
 
-class CategoryViewSet( CachedReadMixin, viewsets.ModelViewSet):
-
+class CategoryViewSet(CachedReadMixin, viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [IsAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name"]
 
-class ProductViewSet(CachedReadMixin, viewsets.ModelViewSet):
 
+class ProductViewSet(CachedReadMixin, viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsSellerOrReadOnly, IsProductOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

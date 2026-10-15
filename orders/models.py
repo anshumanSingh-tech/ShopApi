@@ -10,12 +10,8 @@ class Order(models.Model):
         DELIVERED = "delivered", "Delivered"
         CANCELLED = "cancelled", "Cancelled"
 
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders"
-    )
-    status = models.CharField(
-        max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     shipping_address = models.TextField()
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -27,8 +23,8 @@ class Order(models.Model):
     def __str__(self):
         return f"Order #{self.pk} ({self.status})"
 
-class OrderItem(models.Model):
 
+class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(
         "catalog.Product", on_delete=models.SET_NULL, null=True, related_name="order_items"

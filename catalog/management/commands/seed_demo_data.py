@@ -11,8 +11,14 @@ from catalog.models import Category, Product
 from users.models import User
 
 CATEGORIES = [
-    "Handicrafts", "Textiles", "Home Decor", "Jewellery",
-    "Pottery", "Furniture", "Kitchenware", "Gifts",
+    "Handicrafts",
+    "Textiles",
+    "Home Decor",
+    "Jewellery",
+    "Pottery",
+    "Furniture",
+    "Kitchenware",
+    "Gifts",
 ]
 ADJECTIVES = ["Handmade", "Classic", "Premium", "Rustic", "Elegant", "Vintage", "Modern", "Artisan"]
 MATERIALS = ["Brass", "Cotton", "Clay", "Silver", "Wooden", "Marble", "Silk", "Copper", "Leather"]
@@ -43,9 +49,7 @@ class Command(BaseCommand):
         with transaction.atomic():
             seller = User.objects.filter(email=SELLER_EMAIL).first()
             if seller is None:
-                seller = User.objects.create_user(
-                    email=SELLER_EMAIL, password=None, role=User.Role.SELLER
-                )
+                seller = User.objects.create_user(email=SELLER_EMAIL, password=None, role=User.Role.SELLER)
             step("Seller ready. Preparing categories...")
 
             # two queries for all categories, instead of two per category
@@ -81,13 +85,15 @@ class Command(BaseCommand):
                 for _ in range(missing)
             ]
             for start in range(0, len(products), BATCH_SIZE):
-                Product.objects.bulk_create(products[start:start + BATCH_SIZE])
+                Product.objects.bulk_create(products[start : start + BATCH_SIZE])
                 step(f"Saved {min(start + BATCH_SIZE, len(products))} of {len(products)}")
 
         step("Clearing the catalog cache...")
         bump_version()  # bulk_create sends no signals, so invalidate the cache by hand
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Done in {time.monotonic() - started:.1f}s. "
-            f"Added {missing} products; demo seller now has {current + missing}."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Done in {time.monotonic() - started:.1f}s. "
+                f"Added {missing} products; demo seller now has {current + missing}."
+            )
+        )

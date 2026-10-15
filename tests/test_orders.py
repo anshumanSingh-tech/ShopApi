@@ -16,6 +16,7 @@ def lamp(seller, category):
         seller=seller, category=category, name="Brass Lamp", price="800.00", stock=3
     )
 
+
 def fill_cart(c, *pairs):
     for product, qty in pairs:
         assert c.post(CART_ITEMS, {"product": product.id, "quantity": qty}).status_code == 201

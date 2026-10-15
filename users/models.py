@@ -3,7 +3,6 @@ from django.db import models
 
 
 class UserManager(BaseUserManager):
-
     use_in_migrations = True
 
     def _create_user(self, email, password, **extra_fields):
@@ -28,6 +27,7 @@ class UserManager(BaseUserManager):
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superuser must have is_superuser=True.")
         return self._create_user(email, password, **extra_fields)
+
 
 class User(AbstractUser):
     class Role(models.TextChoices):

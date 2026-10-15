@@ -22,7 +22,6 @@ class Shopper(HttpUser):
     wait_time = between(0.5, 1.5)  # a real person pauses between clicks
     product_ids = []  # filled in once by discover_products() below
 
-
     def _get(self, url, name, params=None):
         with self.client.get(url, params=params, name=name, catch_response=True) as res:
             if res.status_code == 200:
@@ -85,10 +84,14 @@ def prepare_test(environment, **kwargs):
         # distinct search terms -> every request misses and hits the database,
         # which opens each server thread's database connection up front
         with ThreadPoolExecutor(max_workers=16) as pool:
-            list(pool.map(
-                lambda i: requests.get(f"{host}/api/products/", params={"search": f"warmup{i}"}, timeout=60),
-                range(16),
-            ))
+            list(
+                pool.map(
+                    lambda i: requests.get(
+                        f"{host}/api/products/", params={"search": f"warmup{i}"}, timeout=60
+                    ),
+                    range(16),
+                )
+            )
         print(f"Warm-up done, {len(Shopper.product_ids)} product ids found. Starting the test...\n")
     except Exception as exc:  # noqa: BLE001
         print(f"WARNING: could not prepare the test against {host}: {exc}")

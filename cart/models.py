@@ -6,10 +6,7 @@ from django.db import models
 
 
 class Cart(models.Model):
-
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cart"
-    )
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cart")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -23,6 +20,7 @@ class Cart(models.Model):
     @property
     def item_count(self):
         return sum(item.quantity for item in self.items.all())
+
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="items")
