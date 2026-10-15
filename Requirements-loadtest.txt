@@ -1,0 +1,3 @@
+-r Requirements.txt
+locust>=2.30
+waitress>=3.0

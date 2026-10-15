@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import F
 
 from cart.models import Cart
+from catalog.cache import invalidate_on_commit
 from catalog.models import Product
 
 from .exceptions import CheckoutItemsError, EmptyCartError, InvalidTransactionError
@@ -77,6 +78,7 @@ def checkout(user, shipping_address):
         )
         total += p.price * item.quantity
     OrderItem.objects.bulk_create(order_items)
+    invalidate_on_commit()
     
     order.total_amount = total
     order.save(update_fields=["total_amount", "updated_at"])
@@ -94,6 +96,7 @@ def _restock(order):
     )
     for item in items:
         Product.objects.filter(pk=item.product_id).update(stock=F("stock") + item.quantity)
+        invalidate_on_commit()
         
 @transaction.atomic
 def change_status(order_id, new_status, *, allowed_from=None):

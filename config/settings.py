@@ -68,6 +68,10 @@ DATABASES = {
         conn_health_checks=True,  # Neon suspends idle compute; reconnect safely
     )
 }
+if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    # Without this a bad network makes commands hang forever. With it they fail
+    # after 10 seconds with a clear error message instead.
+    DATABASES["default"].setdefault("OPTIONS", {})["connect_timeout"] = 10
  
 # --- Auth ---------------------------------------------------------------
 AUTH_USER_MODEL = "users.User"
@@ -103,6 +107,29 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+ 
+# --- Cache --------------------------------------------------------------
+# REDIS_URL set      -> Redis (Upstash in production)
+# REDIS_URL not set  -> in-process memory cache (fine for local development)
+# CACHE_ENABLED=False-> no caching at all (used for the "before" load test)
+CACHE_ENABLED = config("CACHE_ENABLED", default=True, cast=bool)
+REDIS_URL = config("REDIS_URL", default="")
+CATALOG_CACHE_TTL = config("CATALOG_CACHE_TTL", default=60, cast=int)  # seconds
+ 
+if not CACHE_ENABLED:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
+elif REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "shopapi",
+            # Fail fast instead of hanging a request when Redis is unreachable
+            "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
+        }
+    }
+else:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
  
 # --- Internationalisation ----------------------------------------------
 LANGUAGE_CODE = "en-us"

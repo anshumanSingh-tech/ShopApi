@@ -6,3 +6,4 @@ django-filter>=25.1
 python-decouple>=3.8
 dj-database-url>=3.0
 psycopg[binary]>=3.2
+redis>=5.0

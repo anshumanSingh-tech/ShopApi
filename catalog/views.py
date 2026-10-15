@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 
 from rest_framework.response import Response
 
+from .cache import CachedReadMixin
 from .filters import ProductFilter
 from .models import Category, Product
 from .permissions import (
@@ -15,7 +16,7 @@ from .permissions import (
 )
 from .serializers import CategorySerializer, ProductSerializer
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CategoryViewSet( CachedReadMixin, viewsets.ModelViewSet):
     
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -23,7 +24,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ["name"]
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(CachedReadMixin, viewsets.ModelViewSet):
     
     serializer_class = ProductSerializer
     permission_classes = [IsSellerOrReadOnly, IsProductOwnerOrReadOnly]
