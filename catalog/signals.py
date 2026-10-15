@@ -7,5 +7,5 @@ from .models import Category, Product
 
 @receiver([post_save, post_delete], sender=Product)
 @receiver([post_save, post_delete], sender=Category)
-def invalidate_catalog_cache(sender, **kwargs):
+def invalidate_catalog_cache(sender, *args, **kwargs):
     invalidate_on_commit()
