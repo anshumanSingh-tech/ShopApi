@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shopapi
+      POSTGRES_PASSWORD: shopapi
+      POSTGRES_DB: shopapi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopapi -d shopapi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+ 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+ 
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: local-compose-only-change-me
+      DEBUG: "True"            # local use over plain http; production runs with DEBUG=False
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://shopapi:shopapi@db:5432/shopapi
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "python manage.py migrate --no-input && gunicorn config.wsgi:application -c gunicorn.conf.py"
+ 
+volumes:
+  pgdata:

@@ -5,14 +5,15 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 
+
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
-    
+
     class Meta:
         verbose_name_plural = 'categories'
         ordering = ["name"]
-        
+
     def save(self, *args, **kwargs):
         if not self.slug:
             base = slugify(self.name) or "category"
@@ -22,10 +23,10 @@ class Category(models.Model):
                 n += 1
             self.slug = slug
         super().save(*args, **kwargs)
-        
+
     def __str__(self):
         return self.name
-    
+
 class Product(models.Model):
     seller = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="products"
@@ -42,14 +43,13 @@ class Product(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [
             models.Index(fields=["price"]),
             models.Index(fields=["is_active", "category"]),
         ]
-        
+
     def __str__(self):
         return self.name
-    

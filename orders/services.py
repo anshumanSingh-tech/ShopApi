@@ -10,7 +10,6 @@ from catalog.models import Product
 from .exceptions import CheckoutItemsError, EmptyCartError, InvalidTransactionError
 from .models import Order, OrderItem
 
-
 S = Order.Status
 
 ALLOWED_TRANSACTIONS = {
@@ -29,14 +28,14 @@ def checkout(user, shipping_address):
     cart_items = list(cart.items.order_by("product_id"))
     if not cart_items:
         raise EmptyCartError()
-    
+
     products  = {
         p.id: p
         for p in Product.objects.select_for_update()
         .filter(id__in=[i.product_id for i in cart_items])
         .order_by("id")
     }
-    
+
     problems = []
     for item in cart_items:
         p = products[item.product_id]
@@ -59,7 +58,7 @@ def checkout(user, shipping_address):
         )
     if problems:
         raise CheckoutItemsError(problems)
-    
+
     order = Order.objects.create(user=user, shipping_address=shipping_address)
     total = Decimal("0.00")
     order_items = []
@@ -79,7 +78,7 @@ def checkout(user, shipping_address):
         total += p.price * item.quantity
     OrderItem.objects.bulk_create(order_items)
     invalidate_on_commit()
-    
+
     order.total_amount = total
     order.save(update_fields=["total_amount", "updated_at"])
     cart.items.all().delete()
@@ -88,7 +87,7 @@ def checkout(user, shipping_address):
 def _restock(order):
     items = list(order.items.filter(product_id__isnull=False).order_by("product_id"))
     if not items:
-        return 
+        return
     list(
         Product.objects.select_for_update()
         .filter(id__in=[i.product_id for i in items])
@@ -97,23 +96,23 @@ def _restock(order):
     for item in items:
         Product.objects.filter(pk=item.product_id).update(stock=F("stock") + item.quantity)
         invalidate_on_commit()
-        
+
 @transaction.atomic
 def change_status(order_id, new_status, *, allowed_from=None):
     order = Order.objects.select_for_update().get(pk=order_id)
-    
+
     if allowed_from is not None and order.status not in allowed_from:
         raise InvalidTransactionError(
-            f"An order that is '{order.status}' can't be changed this way." 
+            f"An order that is '{order.status}' can't be changed this way."
         )
     if new_status not in ALLOWED_TRANSACTIONS[order.status]:
         raise InvalidTransactionError(
             f"Can't move an order from '{order.status}' to '{new_status}'."
         )
-        
+
     if new_status == S.CANCELLED:
         _restock(order)
-        
+
     order.status = new_status
     order.save(update_fields=["status", "updated_at"])
     return order

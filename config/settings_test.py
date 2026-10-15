@@ -2,7 +2,7 @@ import os
 
 os.environ.setdefault("DEBUG", "False")
 
-from .settings import *
+from .settings import *  # noqa: F403, F401
 
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production-0123456789")
 
@@ -19,3 +19,14 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 CATALOG_CACHE_TTL = 60
+
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = None
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SECURE_HSTS_SECONDS = 0
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}

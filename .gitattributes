@@ -1,0 +1,8 @@
+# Shell scripts and the Dockerfile run on Linux: keep Unix line endings even when
+# they are edited on Windows (a stray \r breaks them with confusing errors).
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+ 
