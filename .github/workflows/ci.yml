@@ -61,7 +61,11 @@ jobs:
         run: pip install -r Requirements-dev.txt
 
       - name: Lint
-        run: ruff check .
+        run: |
+          rcho "ruff version:"; ruff --version
+          echo "config files tracked by git:"; git ls-files | grep -iE "ruff|pyproject" || echo "(none)"
+          echo "config ruff actually uses:"; ruff check . --show-settings | grep -m1 "Settings path"
+          ruff check .
 
       - name: Django system check
         run: python manage.py check
