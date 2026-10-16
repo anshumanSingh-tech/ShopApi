@@ -2,7 +2,7 @@ import os
 
 os.environ.setdefault("DEBUG", "False")
 
-from .settings import *  # noqa: F403, F401
+from .settings import *  # noqa: E402,F401,F403
 
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production-0123456789")
 
