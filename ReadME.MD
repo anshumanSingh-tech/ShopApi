@@ -2,151 +2,149 @@
 
 [![CI](https://github.com/anshumanSingh-tech/ShopApi/actions/workflows/ci.yml/badge.svg)](https://github.com/anshumanSingh-tech/ShopApi/actions/workflows/ci.yml)
 
-**Live demo:** _add your Render URL here_ (the free plan sleeps when idle, so the first request can take about a minute) · **API docs:** `<your-url>/api/docs/`
+**Live demo:** https://shopapi-e1o3.onrender.com · **API docs (Swagger):** https://shopapi-e1o3.onrender.com/api/docs/
+_Hosted on a free plan: after a quiet spell the first request can take about a minute while the server wakes up._
 
-An e-commerce backend built with Django and Django REST Framework.
+An e-commerce backend built with Django REST Framework. Customers browse, add to a cart and check out; sellers manage their own products; staff move orders through their lifecycle. The interesting parts are not the endpoints but how it behaves under load: **checkout cannot oversell stock when buyers collide**, and **reads are served from a Redis cache that is invalidated the moment data changes**.
 
-**Status:** Phases 1-4 complete (auth, catalog, cart, orders with safe stock handling, Redis caching, load testing, CI, Docker, deployment). Background jobs and rate limiting are next.
+## At a glance
 
-## Stack
-Django 5.2 · DRF · SimpleJWT · drf-spectacular (Swagger) · PostgreSQL (Neon) · Redis (Upstash) · gunicorn + WhiteNoise · Docker · GitHub Actions · Render · pytest · Locust
+| | |
+|---|---|
+| **Correctness under concurrency** | Checkout locks product rows (`SELECT ... FOR UPDATE`). A test fires 8 simultaneous buyers at 3 items on real PostgreSQL: exactly 3 succeed, stock never goes negative. |
+| **Performance** | Redis cache: **~4x throughput** (3.8 → 15.0 req/s) and a **94.5% hit ratio** in a 25-user load test (details below). |
+| **Quality gates** | 88 tests. Every push runs lint, a deployment security check, the full suite against real PostgreSQL and Redis, and a Docker build. |
+| **Deployment** | Render + Neon (PostgreSQL) + Upstash (Redis), all in one region. Deploys only when CI passes. |
 
-## Features so far
-- Email-based custom user model with `customer` / `seller` roles
-- JWT authentication (register, login, refresh, profile)
-- Product catalog with categories
-- Search, filtering (price, category, stock), sorting and pagination
-- Role- and ownership-based permissions (sellers manage only their own products)
-- Shopping cart (add, change quantity, remove, clear) with stock checks
-- Checkout that turns a cart into an order inside a single database transaction
-- **Oversell protection:** product rows are locked (`SELECT ... FOR UPDATE`) during checkout, so two buyers can never both get the last item; a database `CHECK` constraint is the second safety net
-- Order status workflow (pending → confirmed → shipped → delivered, or cancelled) with stock returned on cancellation
-- Orders keep a snapshot of name and price, so history stays correct when products change
-- **Redis caching** of public product/category reads with instant, version-based invalidation; the site keeps working if Redis goes down
-- Load-test suite (Locust) and a seeding command to generate realistic data
-- GitHub Actions CI (lint, migrations check, deploy-security check, tests on real PostgreSQL and Redis, Docker build and smoke test) and deployment to Render
-- Interactive API docs at `/api/docs/`
+## Architecture
 
-## Run locally
+```mermaid
+flowchart LR
+    client["Client or Swagger UI"] -->|HTTPS| app
+    subgraph render["Render - Singapore"]
+        app["Django REST API<br/>gunicorn + WhiteNoise"]
+    end
+    app -->|SQL| db[("PostgreSQL<br/>Neon")]
+    app -->|"cached reads"| redis[("Redis<br/>Upstash")]
+    gh["GitHub Actions<br/>lint, tests, Docker build"] -->|"deploy if checks pass"| render
+```
+
+- **Reads** (`GET /products/`, `/categories/`): look in Redis first; on a miss, query PostgreSQL and store the result for 60 seconds. Each response carries an `X-Cache: HIT | MISS | BYPASS` header.
+- **Writes** (checkout, product edits): go to PostgreSQL, then bump a single "catalog version" key in Redis after the transaction commits. That makes every cached list and detail page stale at once, without scanning keys.
+- **If Redis is down**, requests fall back to the database and log a warning. The cache is an optimisation, never a dependency.
+
+## Try it in 60 seconds
+
+Use a throwaway email and password: this is a public demo.
+
+1. Open the [API docs](https://shopapi-e1o3.onrender.com/api/docs/) and run `POST /api/auth/register/`:
+   ```json
+   {"email": "you@example.com", "password": "a-long-unique-password", "role": "customer"}
+   ```
+2. Run `POST /api/auth/login/`, copy the `access` token, click **Authorize** and paste it.
+3. `POST /api/cart/items/` with `{"product": 1, "quantity": 2}`, then `POST /api/orders/` with `{"shipping_address": "12 MI Road, Jaipur, Rajasthan"}`.
+4. `GET /api/products/1/` again: the stock has dropped by 2. `POST /api/orders/{id}/cancel/` gives it back.
+
+Roles: **customer** (shop), **seller** (also manages their own products), **staff** (manages categories and order status; created by the site owner, not through registration).
+
+## Results: caching under load
+
+Locust, 25 simulated users for 60 s, 966 active products. Django served by waitress (8 threads) on a laptop in Jaipur; Neon and Upstash in Singapore. The same test was run with the cache off and on:
+
+| Endpoint | No cache (p50 / p95) | Redis cache (p50 / p95) |
+|---|---|---|
+| Product list (pages) | 5.4 s / 6.5 s | 0.23 s / 2.0 s |
+| Product list (filters) | 5.3 s / 6.7 s | 0.23 s / 2.2 s |
+| Product list (search) | 5.1 s / 7.1 s | 0.23 s / 3.6 s |
+| Product detail | 2.7 s / 4.2 s | 0.23 s / 0.78 s |
+| Categories | 2.4 s / 4.1 s | 0.23 s / 0.73 s |
+
+**Throughput:** 3.8 → 15.0 req/s (about 4x). **Cache hit ratio:** 94.5%. **Failures:** 0 in both runs.
+
+**How to read this honestly:** the load generator and server were on a different network from the database and cache, so every database or Redis call cost a long round trip. Without the cache each request occupied one of the 8 server threads for about 2 seconds, so requests queued and the latency includes waiting time. The 0.23 s with the cache is two Redis round trips. The throughput figure is the fairer headline than the latency ratio. The p95 with the cache comes from the ~5% of requests that missed while it was filling.
+
+## Problems I hit and how I solved them
+
+1. **Two buyers, one item.** Checking stock and then reducing it is a race. I take row locks in a fixed order (so concurrent checkouts cannot deadlock) and re-validate against the locked rows. I proved the test is meaningful by removing the locks: 8 simultaneous buyers oversold the item and stock reached -1, which a database `CHECK` constraint caught as a second safety net.
+2. **Stale cache after checkout.** Checkout updates stock with `queryset.update()`, which sends no Django signals, so signal-based invalidation missed it. Checkout now bumps the cache version explicitly, and always **after** the transaction commits (otherwise another request could re-cache the old data in the gap).
+3. **A misleading benchmark.** My first "no cache" numbers were far too slow because Django's `runserver` handles each request in a new thread, which opened a new database connection per request (31 connections for 30 requests, versus 8 with waitress). The first runs also hit an old server that still had caching on. The load test now prints `SERVER CACHE IS ON/OFF` before it starts.
+4. **A database on the wrong continent.** My first Neon project was in Ohio, and every query from India cost hundreds of milliseconds. I moved to Singapore and rewrote the seed command from 55 queries to 18.
+5. **The platform's health check was rejected.** Django refuses requests whose Host header isn't in `ALLOWED_HOSTS`, and redirects plain HTTP to HTTPS, so a load balancer's probe could mark a healthy service as failed. A small middleware answers `/api/health/` before either check.
+6. **"Works on my machine" (Windows vs Linux).** CI failed because Git tracked `Ruff.TOML` while Linux looks for `ruff.toml`, and because the Dockerfile sat in a subfolder. I added a `.gitattributes`, pinned the lint tool version, and now run the same checks locally before pushing.
+
+## Features
+
+- Email-based custom user model with customer / seller / staff roles; JWT access and refresh tokens
+- Catalog with categories, search, filtering (price, category, stock), sorting and pagination
+- Ownership rules enforced per object: sellers edit only their own products, customers see only their own orders; the owner always comes from the token, never from the request body
+- Cart with stock checks; checkout in a single transaction; order status workflow (pending → confirmed → shipped → delivered, or cancelled) with stock returned on cancellation
+- Orders store a snapshot of name and price, so history stays correct when products change
+- Production settings: HTTPS redirect, secure cookies, HSTS, WhiteNoise static files, structured logging; `manage.py check --deploy` runs in CI
+
+## API overview
+
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/api/auth/register/`, `/login/`, `/refresh/` | public |
+| GET / PATCH | `/api/auth/me/` | logged in |
+| GET | `/api/products/`, `/api/products/{id}/`, `/api/categories/` | public (cached) |
+| POST / PATCH / DELETE | `/api/products/` | seller (own products only) |
+| GET | `/api/products/mine/` | seller |
+| GET / DELETE | `/api/cart/` | logged in |
+| POST / PATCH / DELETE | `/api/cart/items/`, `/api/cart/items/{id}/` | owner of the cart |
+| POST / GET | `/api/orders/`, `/api/orders/{id}/` | owner (staff: all) |
+| POST | `/api/orders/{id}/cancel/` | owner, while pending |
+| PATCH | `/api/orders/{id}/status/` | staff |
+| POST / PUT / DELETE | `/api/categories/` | staff |
+
+Product list parameters: `search`, `category`, `category_slug`, `min_price`, `max_price`, `in_stock`, `ordering` (`price`, `-price`, `created_at`, `name`), `page`.
+
+## Tech stack
+
+Python 3.13 · Django 5.2 · Django REST Framework · SimpleJWT · drf-spectacular · PostgreSQL (Neon) · Redis (Upstash) · gunicorn · WhiteNoise · Docker · GitHub Actions · Render · pytest · Locust · ruff
+
+## Run it yourself
+
 ```bash
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r Requirements-dev.txt
-cp .env.example .env                               # then edit .env
+python -m venv venv && source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements-dev.txt
+cp .env.example .env                                    # then edit .env
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
-Open http://127.0.0.1:8000/api/docs/
+With Docker (app + PostgreSQL + Redis): `docker compose up --build`, then open http://localhost:8000.
 
-## Run tests
+Without `DATABASE_URL` it uses SQLite; without `REDIS_URL` it uses an in-memory cache. Set `CACHE_ENABLED=False` to turn caching off.
+
 ```bash
-pytest
-```
-The concurrency test (`tests/test_orders_concurrency.py`) needs PostgreSQL because SQLite ignores row locks, so it is skipped by default. To run it against a Postgres database:
-```bash
-TEST_DATABASE_URL=postgresql://user:pass@host:5432/dbname pytest tests/test_orders_concurrency.py
-```
-
-## Caching
-Public `GET /api/products/`, `/api/products/{id}/` and `/api/categories/` are cached for 60 seconds (`CATALOG_CACHE_TTL`). Each response carries an `X-Cache` header: `HIT`, `MISS` or `BYPASS` (sellers and staff always see live data).
-
-- **Invalidation:** every cache key includes a "catalog version". Editing or deleting a product or category (or any stock change from checkout/cancel) sets a new version after the database transaction commits, which makes all old entries unreachable at once.
-- **Safe by design:** only the public view is cached, so a seller's hidden products can never leak. If Redis is unreachable, requests are served from the database and a warning is logged.
-- **Config:** set `REDIS_URL` to use Redis, leave it unset for an in-memory cache, or set `CACHE_ENABLED=False` to disable caching.
-
-## Run with Docker
-```bash
-docker compose up --build        # app + PostgreSQL + Redis
-docker compose run --rm web python manage.py createsuperuser
-docker compose run --rm web python manage.py seed_demo_data --products 1000
-```
-Then open http://localhost:8000/api/docs/. The compose file runs with `DEBUG=True` so it works over plain HTTP; the production image itself runs with `DEBUG=False` behind HTTPS.
-
-## Continuous integration
-Every push and pull request runs `.github/workflows/ci.yml`:
-1. **Lint** (ruff), `manage.py check`, and a check that all migrations are committed
-2. **`manage.py check --deploy`** with production settings, failing on any security warning
-3. **The full test suite against real PostgreSQL and Redis service containers**, so the concurrent-checkout test actually runs (it is skipped on SQLite)
-4. **Docker**: build the image, start the container and call `/api/health/`
-
-Render deploys only when these checks pass (`autoDeployTrigger: checksPass` in `render.yaml`).
-
-## Deployment (Render, Singapore)
-Infrastructure is described in `render.yaml`; the database is Neon and the cache is Upstash, both in Singapore.
-- **Build** (`build.sh`): install dependencies, `collectstatic`, then `migrate`. Migrations run in the build because the free plan has no pre-deploy command and no shell. A failed migration fails the build and the old version keeps serving.
-- **Start:** `gunicorn` (2 workers x 4 threads, see `gunicorn.conf.py`) behind Render's HTTPS proxy. WhiteNoise serves static files.
-- **Health check:** `/api/health/` is answered by a middleware before host validation and HTTPS redirects, so the platform's probe is never rejected.
-- **Free plan limits:** 0.1 CPU / 512 MB RAM, sleeps after 15 minutes without traffic (about a minute to wake), 750 instance hours a month, no shell, outbound SMTP blocked.
-
-Environment variables: `SECRET_KEY` (generated by Render), `DEBUG=False`, `DATABASE_URL` (Neon), `REDIS_URL` (Upstash). Optional: `CACHE_ENABLED`, `CATALOG_CACHE_TTL`, `WEB_CONCURRENCY`.
-
-## Load testing
-```bash
-pip install -r Requirements-loadtest.txt
+pytest                    # 86 tests on SQLite; 88 with real PostgreSQL + Redis (as CI runs them)
 python manage.py seed_demo_data --products 1000
-mkdir loadtests/results
 ```
-**Start the server with waitress, not `runserver`.** `runserver` handles every request in a brand-new thread, so every request opens a new database connection (a TLS handshake and login each time). With a remote database that cost swamps everything else and exaggerates the benefit of caching. Waitress reuses its threads and therefore its connections, like a real production server:
+The concurrency test needs PostgreSQL because SQLite ignores row locks:
+`TEST_DATABASE_URL=postgresql://user:pass@host:5432/db pytest tests/test_orders_concurrency.py`
+
+### Reproduce the load test
 ```bash
-# Terminal 1  (set CACHE_ENABLED=False in .env for the "before" run, True for "after")
-python -m waitress --listen=127.0.0.1:8000 --threads=8 config.wsgi:application
-
-# Terminal 2 - 25 simulated shoppers for 60 seconds
-locust -f loadtests/locustfile.py --headless -u 25 -r 5 -t 60s --host http://127.0.0.1:8000 --csv loadtests/results/before
+pip install -r requirements-loadtest.txt
+python -m waitress --listen=127.0.0.1:8000 --threads=8 config.wsgi:application   # not runserver
+locust -f loadtests/locustfile.py --headless -u 25 -r 5 -t 60s --host http://127.0.0.1:8000 --csv loadtests/results/run
 ```
-Before the timer starts, Locust prints `SERVER CACHE IS ON` or `OFF`. A "before" run must say OFF (and finish with `Hit ratio: 0.0%`), an "after" run must say ON. If not, an old server is probably still running; stop it first (check with `netstat -ano | findstr :8000`).
+Locust prints `SERVER CACHE IS ON/OFF` before it starts. Run once with `CACHE_ENABLED=False` and once with it on, and compare the per-endpoint rows.
 
-Repeat with caching enabled and `--csv loadtests/results/after`. Compare the per-endpoint rows (not the "Aggregated" row) and record them below.
+## CI and deployment
 
-To test the deployed app instead, point `--host` at its URL (for example `--host https://your-service.onrender.com`). Toggle caching by changing `CACHE_ENABLED` in Render's environment settings (Render restarts the service), and wait for it to be live again before starting Locust.
+`.github/workflows/ci.yml` runs on every push: lint (ruff), `manage.py check`, a migrations-are-committed check, `check --deploy` with production settings, the full test suite against PostgreSQL and Redis service containers, then a Docker build with a health-check smoke test. `render.yaml` defines the Render service; it deploys only after the checks pass. Migrations run in the build step because Render's free plan has no shell.
 
-| Endpoint | No cache (p50 / p95) | Redis cache (p50 / p95) | p50 improvement |
-|---|---|---|---|
-| Product list (pages) | 5.4 s / 6.5 s | 0.23 s / 2.0 s | 23x |
-| Product list (filters) | 5.3 s / 6.7 s | 0.23 s / 2.2 s | 23x |
-| Product list (search) | 5.1 s / 7.1 s | 0.23 s / 3.6 s | 22x |
-| Product detail | 2.7 s / 4.2 s | 0.23 s / 0.78 s | 12x |
-| Categories | 2.4 s / 4.1 s | 0.23 s / 0.73 s | 10x |
+## Known limitations and next steps
 
-**Throughput:** 3.8 req/s without the cache, 15.0 req/s with it (about 4x). **Cache hit ratio:** 94.5%. **Failures:** 0 in both runs.
-
-_Test setup:_ Locust 2.46, 25 simulated users (0.5-1.5 s think time) for 60 s, 966 active products. Django served by waitress (8 threads) on a laptop in Jaipur, India; Neon PostgreSQL and Upstash Redis both in AWS Singapore.
-
-_How to read these numbers:_ the server, database and cache were on different networks, so every database or Redis call costs a long round trip. Without the cache, each request kept one of the 8 server threads busy for about 2 seconds, so requests queued and the latency includes waiting time; the 0.23 s with the cache is two Redis round trips. The p95 with the cache (0.7-3.6 s) comes from the ~5% of requests that missed the cache while it was still filling. These will be re-measured against the deployed app (server, database and cache in the same region) in a later phase.
-
-## API overview
-| Method | Endpoint | Access |
-|---|---|---|
-| POST | `/api/auth/register/` | public |
-| POST | `/api/auth/login/` | public |
-| POST | `/api/auth/refresh/` | public |
-| GET/PATCH | `/api/auth/me/` | logged in |
-| GET | `/api/products/` | public |
-| POST | `/api/products/` | seller |
-| PUT/PATCH/DELETE | `/api/products/{id}/` | owning seller |
-| GET | `/api/products/mine/` | seller |
-| GET | `/api/cart/` | logged in |
-| DELETE | `/api/cart/` | logged in (empties cart) |
-| POST | `/api/cart/items/` | logged in |
-| PATCH/DELETE | `/api/cart/items/{id}/` | owner of the cart |
-| POST | `/api/orders/` | logged in (checkout) |
-| GET | `/api/orders/`, `/api/orders/{id}/` | own orders (staff: all) |
-| POST | `/api/orders/{id}/cancel/` | owner, while pending |
-| PATCH | `/api/orders/{id}/status/` | staff |
-| GET | `/api/categories/` | public |
-| POST/PUT/DELETE | `/api/categories/` | admin |
-
-Product list query params: `search`, `category`, `category_slug`, `min_price`, `max_price`, `in_stock`, `ordering` (`price`, `-price`, `created_at`, `name`), `page`.
+- Free hosting sleeps when idle, and the free instance has 0.1 CPU, so absolute latency is modest.
+- No rate limiting yet on login and registration, and no email verification.
+- Next: rate limiting on the auth endpoints, order-confirmation emails sent from a background job (through an HTTP email API, since Render's free plan blocks SMTP), and a separate production database branch.
 
 ## Design decisions
-(To be expanded as the project grows.)
-- **Custom user model from day one** - changing it after the first migration is painful.
-- **Owner comes from the JWT, not the request body** - a seller can't create products as someone else.
-- **Row locking at checkout** - validating stock and then decrementing it is a race condition unless the rows are locked first. Locks are taken in ascending product id order so concurrent checkouts can't deadlock.
-- **All-or-nothing checkout** - if any item is unavailable, nothing is bought, no stock changes and the cart is kept.
-- **Order items are snapshots** - name and price are copied at purchase time.
-- **Business logic lives in `orders/services.py`**, not in views, so it can be tested and reused (e.g. by background jobs later).
-- **Cache invalidation by version, not by key deletion** - one write invalidates every cached list and detail; no key scanning.
-- **Invalidate after commit** - bumping the version inside the transaction would let another request re-cache the old data before the commit lands.
-- **Cache failures never break requests** - Redis is an optimisation, not a dependency.
-- **Roles can't be escalated** - registration only accepts `customer`/`seller`; admin access is granted only via Django admin.
+
+- **Custom user model from day one**: changing it after the first migration is painful.
+- **Business logic in `orders/services.py`**, not in views, so it is testable and reusable by background jobs later.
+- **Versioned cache keys, not key deletion**: one write invalidates every cached page, with no key scanning.
+- **Roles cannot be escalated**: registration only accepts `customer` or `seller`; staff access is granted in Django admin only.
