@@ -1,4 +1,4 @@
 -r Requirements.txt
 pytest>=8.0
 pytest-django>=4.9
-ruff>=0.8
+ruff==0.17.1
