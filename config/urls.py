@@ -1,16 +1,9 @@
 from django.contrib import admin
-from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-
-def health(request):
-    return JsonResponse({"status": "ok"})
-
-
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("/api/health/", health, name="health"),
     path("api/auth/", include("users.urls")),
     path("api/cart/", include("cart.urls")),
     path("api/", include("orders.urls")),
