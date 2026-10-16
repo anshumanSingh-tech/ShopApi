@@ -7,9 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies first: this layer is rebuilt only when requirements.txt changes.
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Install dependencies first: this layer is rebuilt only when Requirements.txt changes.
+COPY Requirements.txt .
+RUN pip install -r Requirements.txt
 
 COPY . .
 
