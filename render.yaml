@@ -6,7 +6,7 @@ services:
     region: singapore
     buildCommand: bash build.sh
     startCommand: gunicorn config.wsgi:application -c gunicorn.conf.py
-    healthCheckPath: /api/heatlh/
+    healthCheckPath: /api/health/
     autoDeployTrigger: checksPass
     envVars:
       - key: SECRET_KEY
